@@ -50,9 +50,11 @@ def aggregate(frames):
             "n_samples": len(g),
             "mean_vaf": g["vaf"].mean(),
             "alt_reads_mean": (fwd + rev) / len(g),
+            "mean_alt_fwd": g["alt_fwd"].mean(),      # reads supporting this base, forward
+            "mean_alt_rev": g["alt_rev"].mean(),      # reads supporting this base, reverse
             "mean_depth": g["depth"].mean(),
-            "mean_depth_fwd": g["depth_fwd"].mean(),
-            "mean_depth_rev": g["depth_rev"].mean(),
+            "mean_depth_fwd": g["depth_fwd"].mean(),  # total coverage forward
+            "mean_depth_rev": g["depth_rev"].mean(),  # total coverage reverse
             "strand_frac_fwd": fwd / (fwd + rev) if (fwd + rev) else np.nan,
         })
     return L.groupby(["chrom", "pos", "gene", "ref", "alt"]).apply(
