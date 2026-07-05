@@ -1,35 +1,29 @@
 #!/usr/bin/env python3
-"""Build per-base pile-up tables for the synthetic cohort under two QC regimes.
+"""Serial pile-up over the whole cohort (one process). For large cohorts on a cluster, use the
+SLURM path instead: scripts/pileup_one_sample.py (one job per sample) + scripts/aggregate_cohort.py.
 
-Two read-quality filter sets are applied, mirroring the laboratory:
-  raw   -- minbq=1,  minmq=1   : essentially unfiltered, i.e. all sequencer noise.
-  filt  -- minbq=20, minmq=30  : the Pisces calling thresholds, i.e. the noise that survives
-                                  the laboratory's quality filters.
-
-Produces under results/:
-  pileup/<sample>.tsv   per sample, the *filt* (callable) counts -> input to the LoB model.
-  cohort_alt.tsv        one row per (position, alternate base) with across-sample statistics
-                        for BOTH regimes (columns suffixed _raw / _filt) -> input to the plots.
+Two read-quality filter sets are applied (see amplicon_lob.tables.FILTERS): raw (minbq1/minmq1,
+all sequencer noise) and filt (minbq20/minmq30, Pisces callable). Produces under results/:
+  pileup/<sample>.tsv       per sample, filt counts -> input to the LoB model
+  pileup_raw/<sample>.tsv   per sample, raw counts  -> for the cohort aggregate
+  cohort_alt.tsv            per (position, alt) with both regimes (_raw / _filt) -> plots
 """
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from amplicon_lob import panel, pileup, samples  # noqa: E402
+from amplicon_lob import panel, pileup, samples, tables  # noqa: E402
 
 DATA = REPO / "data"
 MANIFEST = DATA / "manifest.tsv"
 RESULTS = REPO / "results"
 
-FILTERS = {"raw": (1, 1), "filt": (20, 30)}     # name -> (min_base_quality, min_mapping_quality)
-
 
 def load_truth():
-    """Ground truth is only available for the synthetic cohort; absent for production data."""
+    """Ground truth exists only for the synthetic cohort; absent for production data."""
     gt = DATA / "synthetic" / "ground_truth.tsv"
     truth = {}
     if gt.exists():
@@ -39,85 +33,30 @@ def load_truth():
     return truth
 
 
-def per_sample_table(name, counts, refbases, genes):
-    rows = []
-    for (chrom, pos0), c in sorted(counts.items()):
-        pos1 = pos0 + 1
-        ref = refbases.get((chrom, pos1))
-        if ref is None:
-            continue
-        totals = {b: c[b][0] + c[b][1] for b in "ACGT"}
-        depth = sum(totals.values())
-        depth_fwd = sum(c[b][0] for b in "ACGT")
-        depth_rev = sum(c[b][1] for b in "ACGT")
-        nonref = depth - totals[ref]
-        row = {"sample": name, "gene": genes[chrom], "chrom": chrom, "pos": pos1,
-               "ref": ref, "depth": depth, "depth_fwd": depth_fwd, "depth_rev": depth_rev,
-               "A": totals["A"], "C": totals["C"], "G": totals["G"], "T": totals["T"],
-               "nonref": nonref, "nonref_vaf": nonref / depth if depth else 0.0}
-        for b in "ACGT":
-            row[f"{b}_fwd"], row[f"{b}_rev"] = c[b][0], c[b][1]
-        rows.append(row)
-    return pd.DataFrame(rows)
-
-
-def aggregate(frames):
-    """Across-sample aggregate at (position, alternate base) resolution."""
-    long = []
-    for df in frames:
-        for _, r in df.iterrows():
-            for alt in "ACGT":
-                if alt == r["ref"] or r["depth"] == 0:
-                    continue
-                ac = r[f"{alt}_fwd"] + r[f"{alt}_rev"]
-                long.append({"chrom": r["chrom"], "pos": r["pos"], "gene": r["gene"],
-                             "ref": r["ref"], "alt": alt, "depth": r["depth"],
-                             "depth_fwd": r["depth_fwd"], "depth_rev": r["depth_rev"],
-                             "alt_fwd": r[f"{alt}_fwd"], "alt_rev": r[f"{alt}_rev"],
-                             "vaf": ac / r["depth"]})
-    L = pd.DataFrame(long)
-
-    def summarise(g):
-        fwd, rev = g["alt_fwd"].sum(), g["alt_rev"].sum()
-        return pd.Series({
-            "n_samples": len(g),
-            "mean_vaf": g["vaf"].mean(),
-            "alt_reads_mean": (fwd + rev) / len(g),
-            "mean_depth": g["depth"].mean(),
-            "mean_depth_fwd": g["depth_fwd"].mean(),
-            "mean_depth_rev": g["depth_rev"].mean(),
-            "strand_frac_fwd": fwd / (fwd + rev) if (fwd + rev) else np.nan,
-        })
-    return L.groupby(["chrom", "pos", "gene", "ref", "alt"]).apply(
-        summarise, include_groups=False).reset_index()
-
-
 def main():
     amps = panel.load_amplicons()
     regions = panel.thick_regions(amps)
     refbases = panel.load_reference_bases()
     genes = panel.gene_by_chrom(amps)
-    truth = load_truth()
     manifest = samples.load_manifest(MANIFEST)
 
     (RESULTS / "pileup").mkdir(parents=True, exist_ok=True)
-    frames = {k: [] for k in FILTERS}
+    (RESULTS / "pileup_raw").mkdir(parents=True, exist_ok=True)
+    frames = {k: [] for k in tables.FILTERS}
     for row in manifest:
         name = row["sample"]
-        for key, (bq, mq) in FILTERS.items():
+        for key, (bq, mq) in tables.FILTERS.items():
             counts = pileup.pileup_bam(row["bam"], regions, min_bq=bq, min_mq=mq)
-            frames[key].append(per_sample_table(name, counts, refbases, genes))
-        frames["filt"][-1].to_csv(RESULTS / "pileup" / f"{name}.tsv", sep="\t", index=False)
-    print(f"Wrote {len(manifest)} per-sample (filt) tables to results/pileup/")
+            df = tables.per_sample_table(name, counts, refbases, genes)
+            frames[key].append(df)
+            outdir = "pileup" if key == "filt" else "pileup_raw"
+            df.to_csv(RESULTS / outdir / f"{name}.tsv", sep="\t", index=False)
+    print(f"Wrote {len(manifest)} per-sample tables to results/pileup[_raw]/")
 
-    keys = ["chrom", "pos", "gene", "ref", "alt"]
-    agg = aggregate(frames["raw"]).merge(aggregate(frames["filt"]), on=keys,
-                                         how="outer", suffixes=("_raw", "_filt"))
-    numeric = [c for c in agg.columns if c not in keys]
-    agg[numeric] = agg[numeric].fillna(0)
+    agg = tables.merge_regimes(tables.aggregate(frames["raw"]), tables.aggregate(frames["filt"]))
+    truth = load_truth()
     agg["truth"] = [truth.get((c, p, a), "") for c, p, a in
                     zip(agg["chrom"], agg["pos"], agg["alt"])]
-    agg = agg.sort_values(["chrom", "pos", "alt"])
     agg.to_csv(RESULTS / "cohort_alt.tsv", sep="\t", index=False)
     print(f"Wrote cohort_alt.tsv  ({len(agg)} position x alt rows, raw + filt)")
 
