@@ -45,28 +45,6 @@ MIN_DEPTH = 500           # positions below this mean depth are too low-coverage
 Z_95 = 1.645              # one-sided 95th percentile (EP17 LoB)
 
 
-def load_sample_masks(manifest):
-    """{sample: set((chrom, pos1, alt))} -- every VCF record is masked out of the blank.
-
-    All records are used (not only FILTER=PASS); multi-allelic ALTs are split; chromosome
-    names are normalised to the panel convention so they match the pile-up tables.
-    """
-    masks = {}
-    for row in manifest:
-        keys = set()
-        vcf = row["vcf"]
-        if vcf and Path(vcf).exists():
-            for line in Path(vcf).read_text().splitlines():
-                if line.startswith("#") or not line.strip():
-                    continue
-                f = line.split("\t")
-                chrom, pos = samples.normalize_chrom(f[0]), int(f[1])
-                for alt in f[4].split(","):
-                    keys.add((chrom, pos, alt))
-        masks[row["sample"]] = keys
-    return masks
-
-
 def load_blank_observations(masks, manifest):
     """Long blank table: one row per (sample, position, alt) after masking genuine calls."""
     rows = []
@@ -188,7 +166,7 @@ def validate(summary, truth):
 
 def main():
     manifest = samples.load_manifest(MANIFEST)
-    masks = load_sample_masks(manifest)
+    masks = samples.load_masks(manifest)
     blank = load_blank_observations(masks, manifest)
     truth = load_truth()
     summary = summarise(blank)

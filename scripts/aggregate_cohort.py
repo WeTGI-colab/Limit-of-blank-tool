@@ -12,9 +12,10 @@ import pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from amplicon_lob import tables  # noqa: E402
+from amplicon_lob import samples, tables  # noqa: E402
 
 DATA = REPO / "data"
+MANIFEST = DATA / "manifest.tsv"
 RESULTS = REPO / "results"
 
 
@@ -41,7 +42,8 @@ def main():
         print(f"WARNING: {len(raw)} raw vs {len(filt)} filt per-sample tables "
               f"(some tasks may have failed).")
 
-    agg = tables.merge_regimes(tables.aggregate(raw), tables.aggregate(filt))
+    masks = samples.load_masks(samples.load_manifest(MANIFEST))   # cohort table is blank
+    agg = tables.merge_regimes(tables.aggregate(raw, masks), tables.aggregate(filt, masks))
     truth = load_truth()
     agg["truth"] = [truth.get((c, p, a), "") for c, p, a in
                     zip(agg["chrom"], agg["pos"], agg["alt"])]

@@ -53,7 +53,9 @@ def main():
             df.to_csv(RESULTS / outdir / f"{name}.tsv", sep="\t", index=False)
     print(f"Wrote {len(manifest)} per-sample tables to results/pileup[_raw]/")
 
-    agg = tables.merge_regimes(tables.aggregate(frames["raw"]), tables.aggregate(frames["filt"]))
+    masks = samples.load_masks(manifest)     # remove patient variants -> cohort table is blank
+    agg = tables.merge_regimes(tables.aggregate(frames["raw"], masks),
+                               tables.aggregate(frames["filt"], masks))
     truth = load_truth()
     agg["truth"] = [truth.get((c, p, a), "") for c, p, a in
                     zip(agg["chrom"], agg["pos"], agg["alt"])]

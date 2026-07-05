@@ -28,14 +28,22 @@ def per_sample_table(name, counts, refbases, genes):
     return pd.DataFrame(rows)
 
 
-def aggregate(frames):
-    """Across-sample aggregate at (position, alternate base) resolution."""
+def aggregate(frames, masks=None):
+    """Across-sample aggregate at (position, alternate base) resolution.
+
+    If ``masks`` ({sample: set((chrom, pos, alt))}) is given, each sample's called variants are
+    excluded, so the aggregate is the *blank* -- patient mutations removed.
+    """
     long = []
     for df in frames:
+        sample = df["sample"].iloc[0] if len(df) else None
+        mask = masks.get(sample, set()) if masks else set()
         for _, r in df.iterrows():
             for alt in "ACGT":
                 if alt == r["ref"] or r["depth"] == 0:
                     continue
+                if (r["chrom"], r["pos"], alt) in mask:
+                    continue                          # patient variant -> not blank
                 ac = r[f"{alt}_fwd"] + r[f"{alt}_rev"]
                 long.append({"chrom": r["chrom"], "pos": r["pos"], "gene": r["gene"],
                              "ref": r["ref"], "alt": alt, "depth": r["depth"],
