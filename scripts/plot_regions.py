@@ -6,8 +6,7 @@ no genuine patient mutations. One figure per amplicon, stacked top to bottom (sh
 
   1. plot  -- passing QC (minbq20/minmq30): per alternate base, the mean non-reference VAF (%)
               on each strand -- forward = filled circle, reverse = triangle.
-  2. plot  -- raw (minbq1/minmq1): same, all sequencer noise.
-  3. table -- per position, grouped by strand: forward total depth then, per base, the reads
+  2. table -- per position, grouped by strand: forward total depth then, per base, the reads
               supporting it and the % they represent (VAF); reverse the same, below.
 
 Off-scale values (> YMAX%) are flagged red in the table. Genomic x-axis (GRCh38).
@@ -131,16 +130,14 @@ def plot_amplicon(amp, agg):
     n = len(positions)
     fs = 5.5 if n <= 60 else 4.5 if n <= 130 else 3.5
 
-    fig = plt.figure(figsize=(min(40, max(7, n * 0.34)), 8.6))
-    gs = GridSpec(3, 1, height_ratios=[2.6, 2.6, 3.0], hspace=0.08)
+    fig = plt.figure(figsize=(min(40, max(7, n * 0.34)), 6.4))
+    gs = GridSpec(2, 1, height_ratios=[2.8, 3.0], hspace=0.08)
     ax_top = fig.add_subplot(gs[0])
-    ax_bot = fig.add_subplot(gs[1], sharex=ax_top)
-    ax_tbl = fig.add_subplot(gs[2], sharex=ax_top)
+    ax_tbl = fig.add_subplot(gs[1], sharex=ax_top)
 
     ax_top.set_title(f"{amp['name']} — {n} bases length amplicon  "
                      f"(blank: patient variants removed)")
     draw_plot(ax_top, sub, xi, "filt", "passing QC  (minbq20 / minmq30)", legend=True)
-    draw_plot(ax_bot, sub, xi, "raw", "raw  (all reads, minbq1 / minmq1)")
     draw_table(ax_tbl, positions, xi, by_pos, fs)
     ax_tbl.set_xlim(-0.6, n - 0.4)
     ax_tbl.set_xticks(range(n))
