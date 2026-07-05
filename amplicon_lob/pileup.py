@@ -1,9 +1,11 @@
 """Strand-resolved per-base pile-up over amplicon intervals.
 
-For every reference position in the requested intervals the four nucleotide counts are
-tallied separately for the forward and reverse read strands. Strand resolution is essential:
-a genuine low-VAF variant is supported on both strands, whereas a systematic sequencing
-artefact is typically strand-biased, and that asymmetry is what later separates the two.
+For every reference position the four nucleotide counts are tallied separately for the two
+amplicon directions. In this assay the reads are single-end and the sequencing direction is
+NOT the BAM reverse flag (which is relative to the genome); it is the amplicon that produced
+the read, recorded in the ``CO:Z:Amplicon: <name>_F_/_R_`` tag -- ``_F_`` = forward amplicon,
+``_R_`` = reverse amplicon. Strand resolution matters: a genuine variant is supported by both
+directions, whereas a systematic sequencing artefact is typically direction-biased.
 
 Read-level quality filtering mirrors routine clinical practice (minimum base quality, minimum
 mapping quality, and exclusion of secondary/supplementary/duplicate/QC-fail alignments).
@@ -13,6 +15,17 @@ import pysam
 from amplicon_lob.samples import matching_contig
 
 BASES = "ACGT"
+
+
+def read_is_reverse(aln):
+    """True for a reverse-amplicon read.
+
+    Uses the amplicon direction from the ``CO`` tag (``..._R_`` = reverse, ``..._F_`` = forward)
+    when present; otherwise falls back to the BAM reverse flag (e.g. synthetic test data).
+    """
+    if aln.has_tag("CO"):
+        return str(aln.get_tag("CO")).strip().endswith("_R_")
+    return aln.is_reverse
 
 
 def pileup_bam(bam_path, regions, min_bq=20, min_mq=20):
@@ -42,6 +55,6 @@ def pileup_bam(bam_path, regions, min_bq=20, min_mq=20):
                         continue
                     base = aln.query_sequence[pr.query_position]
                     if base in counts:
-                        counts[base][1 if aln.is_reverse else 0] += 1
+                        counts[base][1 if read_is_reverse(aln) else 0] += 1
                 result[(chrom, col.reference_pos)] = counts
     return result
