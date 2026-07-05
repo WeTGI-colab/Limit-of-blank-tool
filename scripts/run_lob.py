@@ -41,6 +41,7 @@ RESULTS = REPO / "results"
 
 FOLD_THRESHOLD = 3.0      # blank rate must exceed the class floor by at least this factor
 MIN_FLAG_VAF = 1e-3       # and reach at least this absolute mean blank fraction
+MIN_DEPTH = 500           # positions below this mean depth are too low-coverage to trust
 Z_95 = 1.645              # one-sided 95th percentile (EP17 LoB)
 
 
@@ -113,6 +114,7 @@ def summarise(blank):
             "n_blank": len(g),
             "pooled_k": int(g["alt_count"].sum()),
             "pooled_n": int(g["depth"].sum()),
+            "mean_depth": g["depth"].mean(),
             "blank_mean_vaf": vafs.mean(),
             "blank_sd_vaf": vafs.std(ddof=1) if len(vafs) > 1 else 0.0,
             "strand_frac_fwd": fwd / (fwd + rev) if (fwd + rev) else np.nan,
@@ -145,7 +147,8 @@ def detect_systematic(summary, blank):
         else:
             p = 0.0 if r["pooled_rate"] > f0 else 1.0
         flagged = bool(r["fold_over_floor"] >= FOLD_THRESHOLD
-                       and r["blank_mean_vaf"] >= MIN_FLAG_VAF and p < alpha)
+                       and r["blank_mean_vaf"] >= MIN_FLAG_VAF
+                       and r["mean_depth"] >= MIN_DEPTH and p < alpha)
         pvals.append(p)
         flags.append(flagged)
     summary["pval"] = pvals

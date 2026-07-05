@@ -48,9 +48,11 @@ def per_sample_table(name, counts, refbases, genes):
             continue
         totals = {b: c[b][0] + c[b][1] for b in "ACGT"}
         depth = sum(totals.values())
+        depth_fwd = sum(c[b][0] for b in "ACGT")
+        depth_rev = sum(c[b][1] for b in "ACGT")
         nonref = depth - totals[ref]
         row = {"sample": name, "gene": genes[chrom], "chrom": chrom, "pos": pos1,
-               "ref": ref, "depth": depth,
+               "ref": ref, "depth": depth, "depth_fwd": depth_fwd, "depth_rev": depth_rev,
                "A": totals["A"], "C": totals["C"], "G": totals["G"], "T": totals["T"],
                "nonref": nonref, "nonref_vaf": nonref / depth if depth else 0.0}
         for b in "ACGT":
@@ -70,6 +72,7 @@ def aggregate(frames):
                 ac = r[f"{alt}_fwd"] + r[f"{alt}_rev"]
                 long.append({"chrom": r["chrom"], "pos": r["pos"], "gene": r["gene"],
                              "ref": r["ref"], "alt": alt, "depth": r["depth"],
+                             "depth_fwd": r["depth_fwd"], "depth_rev": r["depth_rev"],
                              "alt_fwd": r[f"{alt}_fwd"], "alt_rev": r[f"{alt}_rev"],
                              "vaf": ac / r["depth"]})
     L = pd.DataFrame(long)
@@ -81,6 +84,8 @@ def aggregate(frames):
             "mean_vaf": g["vaf"].mean(),
             "alt_reads_mean": (fwd + rev) / len(g),
             "mean_depth": g["depth"].mean(),
+            "mean_depth_fwd": g["depth_fwd"].mean(),
+            "mean_depth_rev": g["depth_rev"].mean(),
             "strand_frac_fwd": fwd / (fwd + rev) if (fwd + rev) else np.nan,
         })
     return L.groupby(["chrom", "pos", "gene", "ref", "alt"]).apply(
