@@ -9,11 +9,26 @@
 #
 # Usage:  bash slurm/submit.sh [max_concurrent]     (default 50 concurrent tasks)
 set -euo pipefail
-cd "$(dirname "$0")/.."
 
+# resolve the repo root from this script's own location (robust to where it is called from)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(dirname "$SCRIPT_DIR")"
+cd "$REPO"
+
+MANIFEST="$REPO/data/manifest.tsv"
 MAXC="${1:-50}"
-N=$(( $(wc -l < data/manifest.tsv) - 1 ))
-if [ "$N" -lt 1 ]; then echo "Empty manifest -- run discover_samples.py first."; exit 1; fi
+
+echo "Repo root : $REPO"
+echo "Manifest  : $MANIFEST"
+if [ ! -f "$MANIFEST" ]; then
+    echo "ERROR: manifest not found at the path above."
+    echo "Run this first (from $REPO):"
+    echo "  python3 scripts/discover_samples.py --data-path /path/to/data --ids-file config/run_ids.txt"
+    exit 1
+fi
+
+N=$(( $(wc -l < "$MANIFEST") - 1 ))
+if [ "$N" -lt 1 ]; then echo "ERROR: manifest has no samples (only a header)."; exit 1; fi
 mkdir -p logs
 
 echo "Submitting ${N} per-sample pile-up tasks (max ${MAXC} concurrent)..."
