@@ -22,6 +22,7 @@ data/synthetic/
 data/prod_like/
 data/manifest.tsv
 results/
+logs/
 
 ## Python
 __pycache__/

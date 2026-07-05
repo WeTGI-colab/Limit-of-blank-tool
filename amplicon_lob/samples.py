@@ -38,3 +38,26 @@ def matching_contig(references, chrom):
 def normalize_chrom(chrom):
     """Force the panel convention (chr-prefixed) on a chromosome name."""
     return chrom if chrom.startswith("chr") else "chr" + chrom
+
+
+def load_masks(manifest):
+    """{sample: set((chrom, pos1, alt))} of every VCF record, to exclude patient variants.
+
+    All records are used (not only FILTER=PASS); multi-allelic ALTs are split; chromosome names
+    are normalised to the panel convention. Masking is applied wherever the blank is built, so
+    genuine patient mutations never enter the cohort table, the plots or the LoB model.
+    """
+    masks = {}
+    for row in manifest:
+        keys = set()
+        vcf = row.get("vcf")
+        if vcf and Path(vcf).exists():
+            for line in Path(vcf).read_text().splitlines():
+                if line.startswith("#") or not line.strip():
+                    continue
+                f = line.split("\t")
+                chrom, pos = normalize_chrom(f[0]), int(f[1])
+                for alt in f[4].split(","):
+                    keys.add((chrom, pos, alt))
+        masks[row["sample"]] = keys
+    return masks

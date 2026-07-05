@@ -41,29 +41,8 @@ RESULTS = REPO / "results"
 
 FOLD_THRESHOLD = 3.0      # blank rate must exceed the class floor by at least this factor
 MIN_FLAG_VAF = 1e-3       # and reach at least this absolute mean blank fraction
+MIN_DEPTH = 500           # positions below this mean depth are too low-coverage to trust
 Z_95 = 1.645              # one-sided 95th percentile (EP17 LoB)
-
-
-def load_sample_masks(manifest):
-    """{sample: set((chrom, pos1, alt))} -- every VCF record is masked out of the blank.
-
-    All records are used (not only FILTER=PASS); multi-allelic ALTs are split; chromosome
-    names are normalised to the panel convention so they match the pile-up tables.
-    """
-    masks = {}
-    for row in manifest:
-        keys = set()
-        vcf = row["vcf"]
-        if vcf and Path(vcf).exists():
-            for line in Path(vcf).read_text().splitlines():
-                if line.startswith("#") or not line.strip():
-                    continue
-                f = line.split("\t")
-                chrom, pos = samples.normalize_chrom(f[0]), int(f[1])
-                for alt in f[4].split(","):
-                    keys.add((chrom, pos, alt))
-        masks[row["sample"]] = keys
-    return masks
 
 
 def load_blank_observations(masks, manifest):
@@ -113,6 +92,7 @@ def summarise(blank):
             "n_blank": len(g),
             "pooled_k": int(g["alt_count"].sum()),
             "pooled_n": int(g["depth"].sum()),
+            "mean_depth": g["depth"].mean(),
             "blank_mean_vaf": vafs.mean(),
             "blank_sd_vaf": vafs.std(ddof=1) if len(vafs) > 1 else 0.0,
             "strand_frac_fwd": fwd / (fwd + rev) if (fwd + rev) else np.nan,
@@ -145,7 +125,8 @@ def detect_systematic(summary, blank):
         else:
             p = 0.0 if r["pooled_rate"] > f0 else 1.0
         flagged = bool(r["fold_over_floor"] >= FOLD_THRESHOLD
-                       and r["blank_mean_vaf"] >= MIN_FLAG_VAF and p < alpha)
+                       and r["blank_mean_vaf"] >= MIN_FLAG_VAF
+                       and r["mean_depth"] >= MIN_DEPTH and p < alpha)
         pvals.append(p)
         flags.append(flagged)
     summary["pval"] = pvals
@@ -185,7 +166,7 @@ def validate(summary, truth):
 
 def main():
     manifest = samples.load_manifest(MANIFEST)
-    masks = load_sample_masks(manifest)
+    masks = samples.load_masks(manifest)
     blank = load_blank_observations(masks, manifest)
     truth = load_truth()
     summary = summarise(blank)
