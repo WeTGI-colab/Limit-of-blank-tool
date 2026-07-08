@@ -71,17 +71,29 @@ def draw_plot(ax, sub, xi, tag, legend=False):
     plt.setp(ax.get_xticklabels(), visible=False)
 
 
+def fmt_count(x):
+    """Compact integer formatting for the cohort-total read counts."""
+    if x >= 1e6:
+        return f"{x / 1e6:.1f}M"
+    if x >= 1e3:
+        return f"{x / 1e3:.1f}k"
+    return f"{x:.0f}"
+
+
 def build_by_pos(sub):
+    """Per position, per QC regime: cohort-TOTAL depth/reads (sum over samples) and VAF."""
     by_pos = {}
     for p, g in sub.groupby("pos"):
         rec = {"ref": g["ref"].iloc[0]}
         for tag in ("raw", "filt"):
+            ns = g[f"n_samples_{tag}"].iloc[0]           # samples contributing -> total = mean*ns
             alts = {}
             for _, r in g.iterrows():
-                alts[r["alt"]] = {"fwd": r[f"mean_alt_fwd_{tag}"], "rev": r[f"mean_alt_rev_{tag}"],
+                alts[r["alt"]] = {"fwd": r[f"mean_alt_fwd_{tag}"] * ns,
+                                  "rev": r[f"mean_alt_rev_{tag}"] * ns,
                                   "vaf_fwd": r[f"vaf_fwd_{tag}"], "vaf_rev": r[f"vaf_rev_{tag}"]}
-            rec[tag] = {"depth_fwd": g[f"mean_depth_fwd_{tag}"].iloc[0],
-                        "depth_rev": g[f"mean_depth_rev_{tag}"].iloc[0], "alts": alts}
+            rec[tag] = {"depth_fwd": g[f"mean_depth_fwd_{tag}"].iloc[0] * ns,
+                        "depth_rev": g[f"mean_depth_rev_{tag}"].iloc[0] * ns, "alts": alts}
         by_pos[p] = rec
     return by_pos
 
@@ -104,27 +116,41 @@ def draw_table(tb, positions, xi, by_pos, tag, fs, label):
         i = xi[p]
         rec = by_pos[p]
         d = rec[tag]
-        tb.text(i, yof["fwd depth"], f"{d['depth_fwd']:.0f}", ha="center", va="center",
+        tb.text(i, yof["fwd depth"], fmt_count(d["depth_fwd"]), ha="center", va="center",
                 fontsize=fs, rotation=0)
-        tb.text(i, yof["rev depth"], f"{d['depth_rev']:.0f}", ha="center", va="center",
+        tb.text(i, yof["rev depth"], fmt_count(d["depth_rev"]), ha="center", va="center",
                 fontsize=fs, rotation=0)
         for base in "ACGT":
             for strand in ("fwd", "rev"):
                 a = d["alts"].get(base, {})
-                reads = a.get(strand, 0.0)
+                reads = a.get(strand, 0.0)              # cohort-total supporting reads
                 vaf = a.get(f"vaf_{strand}", 0.0) * 100
                 if base == rec["ref"]:
                     txt, color = "·", "#bbbbbb"
                 elif reads < 0.5:
                     txt, color = "·", "#dddddd"
                 else:
-                    txt = f"{reads:.0f}/{vaf:.2f}"
+                    txt = f"{fmt_count(reads)}/{vaf:.2f}"
                     color = RED if vaf > YMAX else "black"
                 tb.text(i, yof[f"{strand} {base}"], txt, ha="center", va="center",
                         fontsize=fs, rotation=0, color=color)
     for i in range(len(positions) + 1):
         tb.axvline(i - 0.5, color="#eeeeee", lw=0.4)
     tb.tick_params(axis="y", length=0)
+
+
+def draw_refseq(ax, positions, xi, by_pos, fs):
+    """Reference base at each position, coloured by base, as a track between the two plots."""
+    ax.set_ylim(0, 1)
+    ax.set_yticks([0.5])
+    ax.set_yticklabels(["ref"], fontsize=7)
+    ax.set_xlim(-0.6, len(positions) - 0.4)
+    for p in positions:
+        b = by_pos[p]["ref"]
+        ax.text(xi[p], 0.5, b, ha="center", va="center", fontsize=fs + 1.5,
+                color=BASE_COLOR.get(b, "black"), fontweight="bold")
+    ax.tick_params(axis="y", length=0)
+    plt.setp(ax.get_xticklabels(), visible=False)
 
 
 def plot_amplicon(amp, agg):
@@ -139,17 +165,19 @@ def plot_amplicon(amp, agg):
     n = len(positions)
     fs = 5.5 if n <= 60 else 4.5 if n <= 130 else 3.5
 
-    fig = plt.figure(figsize=(min(40, max(7, n * 0.34)), 10.5))
-    gs = GridSpec(4, 1, height_ratios=[2.2, 2.3, 2.3, 2.2], hspace=0.10)
+    fig = plt.figure(figsize=(min(40, max(7, n * 0.34)), 11.0))
+    gs = GridSpec(5, 1, height_ratios=[2.2, 2.3, 0.5, 2.3, 2.2], hspace=0.10)
     ax_t0 = fig.add_subplot(gs[0])
     ax_p0 = fig.add_subplot(gs[1], sharex=ax_t0)
-    ax_p1 = fig.add_subplot(gs[2], sharex=ax_t0)
-    ax_t1 = fig.add_subplot(gs[3], sharex=ax_t0)
+    ax_ref = fig.add_subplot(gs[2], sharex=ax_t0)
+    ax_p1 = fig.add_subplot(gs[3], sharex=ax_t0)
+    ax_t1 = fig.add_subplot(gs[4], sharex=ax_t0)
 
     ax_t0.set_title(f"{amp['name']} — {n} bases length amplicon  (blank: patient variants removed)")
     draw_table(ax_t0, positions, xi, by_pos, "raw", fs, "quality 0  (minbq1)")
     plt.setp(ax_t0.get_xticklabels(), visible=False)
     draw_plot(ax_p0, sub, xi, "raw", legend=True)
+    draw_refseq(ax_ref, positions, xi, by_pos, fs)
     draw_plot(ax_p1, sub, xi, "filt")
     draw_table(ax_t1, positions, xi, by_pos, "filt", fs, "quality 20  (minbq20)")
 
