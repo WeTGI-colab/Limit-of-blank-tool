@@ -44,7 +44,8 @@ def pileup_bam(bam_path, regions, min_bq=20, min_mq=20):
             if contig is None:
                 continue
             for col in bam.pileup(contig, start, end, truncate=True, stepper="all",
-                                  ignore_orphans=False, min_base_quality=min_bq):
+                                  ignore_orphans=False, min_base_quality=min_bq,
+                                  max_depth=100_000_000):
                 counts = {b: [0, 0] for b in BASES}
                 for pr in col.pileups:
                     if pr.is_del or pr.is_refskip:
