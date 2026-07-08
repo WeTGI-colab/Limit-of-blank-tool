@@ -123,14 +123,13 @@ def draw_table(tb, positions, xi, by_pos, tag, fs, label):
         for base in "ACGT":
             for strand in ("fwd", "rev"):
                 a = d["alts"].get(base, {})
-                reads = a.get(strand, 0.0)              # cohort-total supporting reads
-                vaf = a.get(f"vaf_{strand}", 0.0) * 100
+                vaf = a.get(f"vaf_{strand}", 0.0) * 100  # % of this strand's reads that are `base`
                 if base == rec["ref"]:
                     txt, color = "·", "#bbbbbb"
-                elif reads < 0.5:
+                elif vaf < 5e-4:
                     txt, color = "·", "#dddddd"
                 else:
-                    txt = f"{fmt_count(reads)}/{vaf:.2f}"
+                    txt = f"{vaf:.3f}"
                     color = RED if vaf > YMAX else "black"
                 tb.text(i, yof[f"{strand} {base}"], txt, ha="center", va="center",
                         fontsize=fs, rotation=0, color=color)
@@ -184,7 +183,8 @@ def plot_amplicon(amp, agg):
     ax_t1.set_xlim(-0.6, n - 0.4)
     ax_t1.set_xticks(range(n))
     ax_t1.set_xticklabels([f"{p:,}" for p in positions], rotation=90, fontsize=fs)
-    ax_t1.set_xlabel(f"{amp['chrom']} genomic coordinate (GRCh38)  [table cells: reads / VAF%]")
+    ax_t1.set_xlabel(f"{amp['chrom']} genomic coordinate (GRCh38)  "
+                     f"[depth rows = total reads; base rows = % of that strand's reads]")
 
     (PLOTS / "amplicons").mkdir(parents=True, exist_ok=True)
     out = PLOTS / "amplicons" / f"{amp['name']}.png"
