@@ -32,6 +32,7 @@ BASE_COLOR = {"A": "#2ca02c", "C": "#1f77b4", "G": "#ff7f0e", "T": "#d62728"}  #
 BASE_OFFSET = {"A": -0.24, "C": -0.08, "G": 0.08, "T": 0.24}
 YMAX = 1.0
 RED = "#d62728"
+MIN_STRAND_DEPTH = 500   # only plot a strand's VAF where that strand is deep enough to trust
 
 
 def add_strand_vafs(sub):
@@ -45,11 +46,13 @@ def add_strand_vafs(sub):
 def draw_plot(ax, sub, xi, tag, panel_label, legend=False):
     for base in "ACGT":
         s = sub[sub["alt"] == base]
-        xs = [xi[p] + BASE_OFFSET[base] for p in s["pos"]]
-        ax.scatter(xs, s[f"vaf_fwd_{tag}"] * 100, marker="o", s=15,
-                   color=BASE_COLOR[base], alpha=0.85, edgecolors="none")
-        ax.scatter(xs, s[f"vaf_rev_{tag}"] * 100, marker="^", s=22,
-                   color=BASE_COLOR[base], alpha=0.85, edgecolors="none")
+        # a strand's VAF is only plotted where that strand has enough depth to be reliable
+        sf = s[s[f"mean_depth_fwd_{tag}"] >= MIN_STRAND_DEPTH]
+        ax.scatter([xi[p] + BASE_OFFSET[base] for p in sf["pos"]], sf[f"vaf_fwd_{tag}"] * 100,
+                   marker="o", s=15, color=BASE_COLOR[base], alpha=0.85, edgecolors="none")
+        sr = s[s[f"mean_depth_rev_{tag}"] >= MIN_STRAND_DEPTH]
+        ax.scatter([xi[p] + BASE_OFFSET[base] for p in sr["pos"]], sr[f"vaf_rev_{tag}"] * 100,
+                   marker="^", s=22, color=BASE_COLOR[base], alpha=0.85, edgecolors="none")
     ax.set_ylim(0, YMAX)
     ax.set_yticks([round(0.25 * k, 2) for k in range(int(YMAX / 0.25) + 1)])
     ax.set_ylabel("% non-reference")
