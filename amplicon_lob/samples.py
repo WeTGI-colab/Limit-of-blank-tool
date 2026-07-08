@@ -41,11 +41,12 @@ def normalize_chrom(chrom):
 
 
 def load_masks(manifest):
-    """{sample: set((chrom, pos1, alt))} of every VCF record, to exclude patient variants.
+    """{sample: set((chrom, pos1, alt))} of genuine (FILTER=PASS) calls to exclude.
 
-    All records are used (not only FILTER=PASS); multi-allelic ALTs are split; chromosome names
-    are normalised to the panel convention. Masking is applied wherever the blank is built, so
-    genuine patient mutations never enter the cohort table, the plots or the LoB model.
+    Only FILTER=PASS records are masked -- those are the genuine patient variants. Records the
+    caller has flagged (non-PASS, e.g. Pisces ``high_diff_MBQ`` oxidation artefacts) are the
+    background we are modelling, so they are deliberately KEPT in the blank. Multi-allelic ALTs
+    are split; chromosome names are normalised to the panel convention.
     """
     masks = {}
     for row in manifest:
@@ -56,6 +57,8 @@ def load_masks(manifest):
                 if line.startswith("#") or not line.strip():
                     continue
                 f = line.split("\t")
+                if len(f) < 7 or f[6] != "PASS":
+                    continue                       # keep caller-flagged artefacts in the blank
                 chrom, pos = normalize_chrom(f[0]), int(f[1])
                 for alt in f[4].split(","):
                     keys.add((chrom, pos, alt))
