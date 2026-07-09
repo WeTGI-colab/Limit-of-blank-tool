@@ -58,7 +58,10 @@ def main():
                         color="black" if v < vmax * 0.5 else "white")
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.01)
-    cbar.set_label("% non-reference VAF (blank, log)")
+    ticks = [t for t in (0.01, 0.1, 1, 10) if t <= vmax]
+    cbar.set_ticks(ticks)
+    cbar.set_ticklabels([f"{t:g}%" for t in ticks])
+    cbar.set_label("non-reference VAF (blank, log)")
     ax.set_title("Per-run artefact VAF — a bright column is a run/batch effect")
     fig.tight_layout()
     (RESULTS / "plots").mkdir(parents=True, exist_ok=True)
