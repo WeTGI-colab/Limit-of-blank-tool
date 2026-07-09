@@ -30,19 +30,21 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--top", type=int, default=0,
-                    help="use the top-N flagged sites by blank VAF (0 = all flagged)")
+                    help="use the top-N sites by blank VAF (any site, not just flagged); "
+                         "0 = only the flagged sites")
     ap.add_argument("--min-depth", type=int, default=500,
                     help="ignore sites below this mean depth")
     args = ap.parse_args()
 
     run_of = {r["sample"]: r["run"] for r in samples.load_manifest(MANIFEST)}
     lob = pd.read_csv(RESULTS / "lob_table.tsv", sep="\t")
-    sites = lob[lob["flagged"] == True]                                     # noqa: E712
-    if "mean_depth" in sites.columns:
-        sites = sites[sites["mean_depth"] >= args.min_depth]
-    sites = sites.sort_values("blank_mean_vaf", ascending=False)
+    if "mean_depth" in lob.columns:
+        lob = lob[lob["mean_depth"] >= args.min_depth]
     if args.top:
-        sites = sites.head(args.top)
+        sites = lob.sort_values("blank_mean_vaf", ascending=False).head(args.top)
+    else:
+        sites = lob[lob["flagged"] == True].sort_values(                   # noqa: E712
+            "blank_mean_vaf", ascending=False)
     targets = [(r.chrom, int(r.pos), r.alt, r.sub) for r in sites.itertuples()]
     if not targets:
         sys.exit("No flagged sites to break down.")
