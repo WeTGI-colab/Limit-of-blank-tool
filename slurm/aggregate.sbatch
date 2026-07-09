@@ -20,5 +20,5 @@ cd "${SLURM_SUBMIT_DIR:-.}"
 python3 scripts/aggregate_cohort.py
 python3 scripts/run_lob.py
 python3 scripts/plot_regions.py
-python3 scripts/artefact_by_run.py
+python3 scripts/artefact_by_run.py --top 100
 python3 scripts/plot_artefact_by_run.py
