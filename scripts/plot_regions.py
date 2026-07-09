@@ -171,7 +171,7 @@ def plot_amplicon(amp, agg):
     ax_p1 = fig.add_subplot(gs[3], sharex=ax_t0)
     ax_t1 = fig.add_subplot(gs[4], sharex=ax_t0)
 
-    ax_t0.set_title(f"{amp['name']} — {n} bases length amplicon  (blank: patient variants removed)")
+    ax_t0.set_title(f"{amp['name']} — {n} bases length amplicon")
     draw_table(ax_t0, positions, xi, by_pos, "raw", fs)
     plt.setp(ax_t0.get_xticklabels(), visible=False)
     draw_plot(ax_p0, sub, xi, "raw", legend=True)
