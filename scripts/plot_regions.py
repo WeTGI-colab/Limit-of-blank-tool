@@ -98,7 +98,7 @@ def build_by_pos(sub):
     return by_pos
 
 
-def draw_table(tb, positions, xi, by_pos, tag, fs, label):
+def draw_table(tb, positions, xi, by_pos, tag, fs):
     labels = ["fwd depth", "fwd A", "fwd C", "fwd G", "fwd T",
               "rev depth", "rev A", "rev C", "rev G", "rev T"]
     ys = list(np.linspace(0.93, 0.07, len(labels)))
@@ -111,7 +111,6 @@ def draw_table(tb, positions, xi, by_pos, tag, fs, label):
         if b in BASE_COLOR:
             lbl.set_color(BASE_COLOR[b])
     tb.set_xlim(-0.6, len(positions) - 0.4)
-    tb.text(0.004, 0.99, label, transform=tb.transAxes, fontsize=7, va="top", fontweight="bold")
     for p in positions:
         i = xi[p]
         rec = by_pos[p]
@@ -173,12 +172,12 @@ def plot_amplicon(amp, agg):
     ax_t1 = fig.add_subplot(gs[4], sharex=ax_t0)
 
     ax_t0.set_title(f"{amp['name']} — {n} bases length amplicon  (blank: patient variants removed)")
-    draw_table(ax_t0, positions, xi, by_pos, "raw", fs, "quality 0  (minbq1)")
+    draw_table(ax_t0, positions, xi, by_pos, "raw", fs)
     plt.setp(ax_t0.get_xticklabels(), visible=False)
     draw_plot(ax_p0, sub, xi, "raw", legend=True)
     draw_refseq(ax_ref, positions, xi, by_pos, fs)
     draw_plot(ax_p1, sub, xi, "filt")
-    draw_table(ax_t1, positions, xi, by_pos, "filt", fs, "quality 20  (minbq20)")
+    draw_table(ax_t1, positions, xi, by_pos, "filt", fs)
 
     ax_t1.set_xlim(-0.6, n - 0.4)
     ax_t1.set_xticks(range(n))
