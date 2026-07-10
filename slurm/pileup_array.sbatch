@@ -17,4 +17,13 @@ cd "${SLURM_SUBMIT_DIR:-.}"
 # module load python/3.9
 # source .venv/bin/activate
 
-python3 scripts/pileup_one_sample.py --index "${SLURM_ARRAY_TASK_ID}"
+# pick a python that can import pysam (the pile-up needs it); override with PY=/path/to/python
+PY="${PY:-python3}"
+if ! "$PY" -c 'import pysam' 2>/dev/null; then
+  for cand in /usr/bin/python3.11 python3.11; do
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import pysam' 2>/dev/null; then PY="$cand"; break; fi
+  done
+fi
+"$PY" -c 'import pysam' 2>/dev/null || { echo "ERROR: no python with pysam found (set PY=)"; exit 1; }
+
+"$PY" scripts/pileup_one_sample.py --index "${SLURM_ARRAY_TASK_ID}"

@@ -17,9 +17,23 @@ cd "${SLURM_SUBMIT_DIR:-.}"
 # module load python/3.9
 # source .venv/bin/activate
 
-python3 scripts/aggregate_cohort.py
-python3 scripts/export_vcf_variants.py
-python3 scripts/run_lob.py
-python3 scripts/plot_regions.py
-python3 scripts/artefact_by_run.py --top 100
-python3 scripts/plot_artefact_by_run.py
+# pick a python that can import pandas; override with PY=/path/to/python
+PY="${PY:-python3}"
+if ! "$PY" -c 'import pandas' 2>/dev/null; then
+  for cand in /usr/bin/python3.11 python3.11; do
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import pandas' 2>/dev/null; then PY="$cand"; break; fi
+  done
+fi
+"$PY" -c 'import pandas' 2>/dev/null || { echo "ERROR: no python with pandas found (set PY=)"; exit 1; }
+
+# raw data tables only -- plots and the PDF are generated locally from these
+"$PY" scripts/aggregate_cohort.py            # results/cohort_alt.tsv
+"$PY" scripts/export_vcf_variants.py         # results/vcf_variants{,_summary}.tsv
+"$PY" scripts/run_lob.py                     # results/lob_table.tsv (Gaussian + beta-binomial)
+"$PY" scripts/artefact_by_run.py --top 100   # results/artefact_by_run.tsv
+
+# bundle the tables to bring back
+tar -czf results/deliverables.tar.gz \
+  results/cohort_alt.tsv results/lob_table.tsv results/vcf_variants.tsv \
+  results/vcf_variants_summary.tsv results/artefact_by_run.tsv
+echo "Wrote results/deliverables.tar.gz -- scp this back."
