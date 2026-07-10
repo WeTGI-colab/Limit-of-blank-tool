@@ -18,6 +18,7 @@ cd "${SLURM_SUBMIT_DIR:-.}"
 # source .venv/bin/activate
 
 python3 scripts/aggregate_cohort.py
+python3 scripts/export_vcf_variants.py
 python3 scripts/run_lob.py
 python3 scripts/plot_regions.py
 python3 scripts/artefact_by_run.py --top 100

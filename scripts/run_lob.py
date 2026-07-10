@@ -17,9 +17,16 @@ Method
    statistically distinguishable from it (one-sided t-test on the per-sample fractions,
    Bonferroni-corrected). Strand asymmetry is reported alongside as corroborating evidence.
 
-4. Positional Limit of Blank (CLSI EP17). LoB is estimated per position/substitution as
-   mean_blank + 1.645 x SD_blank, i.e. the 95th percentile of the blank distribution. A
-   candidate variant in a new sample must exceed the LoB at its own locus rather than a flat
+4. Positional Limit of Blank (CLSI EP17). Two estimators of the 95th-percentile blank ceiling
+   are reported side by side:
+     - lob_vaf         Gaussian: mean_blank + 1.645 x SD_blank (assumes normality of the
+                       per-sample blank fractions).
+     - lob_vaf_betabin Beta-binomial: a Beta(alpha, beta) is fitted to the per-sample
+                       non-reference counts by method of moments (deepSNV/shearwater family),
+                       capturing between-sample overdispersion; the ceiling is the 95th
+                       percentile of that fitted rate distribution. bb_rho reports the
+                       overdispersion (0 = pure binomial sampling, ->1 = strong batch spread).
+   A candidate variant in a new sample must exceed the LoB at its own locus rather than a flat
    panel-wide VAF threshold.
 
 Output: results/lob_table.tsv, plus a validation summary against the synthetic ground truth.
@@ -34,6 +41,7 @@ from scipy import stats
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from amplicon_lob import samples  # noqa: E402
+from amplicon_lob.betabin import betabin_lob  # noqa: E402
 
 SYN = REPO / "data" / "synthetic"
 MANIFEST = REPO / "data" / "manifest.tsv"
@@ -42,6 +50,10 @@ RESULTS = REPO / "results"
 FOLD_THRESHOLD = 3.0      # blank rate must exceed the class floor by at least this factor
 MIN_FLAG_VAF = 1e-3       # and reach at least this absolute mean blank fraction
 MIN_DEPTH = 500           # positions below this mean depth are too low-coverage to trust
+MIN_BLANK_FRAC = 0.2      # and be observed in at least this fraction of the (blank) cohort
+                          # (systematic = recurrent; tune to your cohort before running)
+MIN_BLANK_ABS = 3         # with an absolute floor for small cohorts
+FLOOR_EPS = 1e-6          # guard so a zero class floor cannot make fold-over-floor infinite
 Z_95 = 1.645              # one-sided 95th percentile (EP17 LoB)
 
 
@@ -88,6 +100,7 @@ def summarise(blank):
     def agg(g):
         vafs = g["vaf"].to_numpy()
         fwd, rev = g["alt_fwd"].sum(), g["alt_rev"].sum()
+        lob_bb, rho = betabin_lob(g["alt_count"].to_numpy(), g["depth"].to_numpy())
         return pd.Series({
             "n_blank": len(g),
             "pooled_k": int(g["alt_count"].sum()),
@@ -96,6 +109,8 @@ def summarise(blank):
             "blank_mean_vaf": vafs.mean(),
             "blank_sd_vaf": vafs.std(ddof=1) if len(vafs) > 1 else 0.0,
             "strand_frac_fwd": fwd / (fwd + rev) if (fwd + rev) else np.nan,
+            "lob_vaf_betabin": lob_bb,
+            "bb_rho": rho,
         })
     s = blank.groupby(["chrom", "pos", "ref", "alt", "sub"]).apply(
         agg, include_groups=False).reset_index()
@@ -104,11 +119,19 @@ def summarise(blank):
     return s
 
 
-def detect_systematic(summary, blank):
-    """Flag systematic artefacts relative to a substitution-class error floor."""
+def detect_systematic(summary, blank, cohort_n):
+    """Flag systematic artefacts relative to a substitution-class error floor.
+
+    A position/substitution is flagged only when it (a) exceeds its class floor by FOLD_THRESHOLD,
+    (b) reaches an absolute blank fraction of MIN_FLAG_VAF, (c) has adequate depth, (d) is
+    statistically distinguishable from the floor, and (e) recurs across the cohort -- present in at
+    least MIN_BLANK_FRAC of the (blank) samples. The recurrence gate is what makes a flag mean
+    "systematic": a rate seen in only one or two samples is not an instrument-level artefact.
+    """
     floor = summary.groupby("sub")["pooled_rate"].median().to_dict()
-    summary["class_floor"] = summary["sub"].map(floor)
+    summary["class_floor"] = summary["sub"].map(floor).clip(lower=FLOOR_EPS)
     summary["fold_over_floor"] = summary["pooled_rate"] / summary["class_floor"]
+    min_blank = max(MIN_BLANK_ABS, int(round(MIN_BLANK_FRAC * cohort_n)))
 
     per_site = {k: g["vaf"].to_numpy() for k, g in
                 blank.groupby(["chrom", "pos", "alt"])}
@@ -126,7 +149,8 @@ def detect_systematic(summary, blank):
             p = 0.0 if r["pooled_rate"] > f0 else 1.0
         flagged = bool(r["fold_over_floor"] >= FOLD_THRESHOLD
                        and r["blank_mean_vaf"] >= MIN_FLAG_VAF
-                       and r["mean_depth"] >= MIN_DEPTH and p < alpha)
+                       and r["mean_depth"] >= MIN_DEPTH
+                       and r["n_blank"] >= min_blank and p < alpha)
         pvals.append(p)
         flags.append(flagged)
     summary["pval"] = pvals
@@ -170,7 +194,8 @@ def main():
     blank = load_blank_observations(masks, manifest)
     truth = load_truth()
     summary = summarise(blank)
-    summary, alpha = detect_systematic(summary, blank)
+    cohort_n = blank["sample"].nunique()
+    summary, alpha = detect_systematic(summary, blank, cohort_n)
 
     summary["truth"] = [truth.get((c, p, a), "") for c, p, a in
                         zip(summary["chrom"], summary["pos"], summary["alt"])]
