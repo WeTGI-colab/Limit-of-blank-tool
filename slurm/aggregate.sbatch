@@ -17,14 +17,15 @@ cd "${SLURM_SUBMIT_DIR:-.}"
 # module load python/3.9
 # source .venv/bin/activate
 
-# pick a python that can import pandas; override with PY=/path/to/python
+# pick a python with the full stack the aggregate needs (pandas, numpy AND scipy -- run_lob uses
+# scipy); a conda 'base' with only pandas is not enough. Override with PY=/path/to/python
 PY="${PY:-python3}"
-if ! "$PY" -c 'import pandas' 2>/dev/null; then
+if ! "$PY" -c 'import pandas, numpy, scipy' 2>/dev/null; then
   for cand in /usr/bin/python3.11 python3.11; do
-    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import pandas' 2>/dev/null; then PY="$cand"; break; fi
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import pandas, numpy, scipy' 2>/dev/null; then PY="$cand"; break; fi
   done
 fi
-"$PY" -c 'import pandas' 2>/dev/null || { echo "ERROR: no python with pandas found (set PY=)"; exit 1; }
+"$PY" -c 'import pandas, numpy, scipy' 2>/dev/null || { echo "ERROR: no python with pandas+numpy+scipy found (set PY=)"; exit 1; }
 
 # raw data tables only -- plots and the PDF are generated locally from these
 "$PY" scripts/aggregate_cohort.py            # results/cohort_alt.tsv
